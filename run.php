@@ -143,7 +143,9 @@ foreach ($communities as $node => $comm) {
 
 echo "Communautés détectées :\n\n";
 $communityIndex = 1;
+$communityLabels = []; // Mapping communauté -> label
 foreach ($result as $comm => $nodes) {
+    $communityLabels[$comm] = $communityIndex;
     echo "Communauté #$communityIndex (représentant: $comm) :\n";
     foreach ($nodes as $node) {
         echo "  - $node\n";
@@ -152,11 +154,92 @@ foreach ($result as $comm => $nodes) {
     $communityIndex++;
 }
 
+// Analyser les dépendances entre communautés
+echo "═══════════════════════════════════════════════════════════════\n";
+echo "Dépendances entre communautés :\n\n";
+
+$communityDependencies = []; // [comm1][comm2] => nombre de liens
+
+// Initialiser la matrice de dépendances
+foreach ($result as $comm1 => $nodes1) {
+    $communityDependencies[$comm1] = [];
+    foreach ($result as $comm2 => $nodes2) {
+        $communityDependencies[$comm1][$comm2] = 0;
+    }
+}
+
+// Compter les liens entre communautés
+foreach ($graph as $node => $deps) {
+    $nodeCommunity = $communities[$node];
+    
+    foreach ($deps as $neighbor) {
+        $neighborCommunity = $communities[$neighbor];
+        
+        // Si les deux nœuds sont dans des communautés différentes
+        if ($nodeCommunity !== $neighborCommunity) {
+            $communityDependencies[$nodeCommunity][$neighborCommunity]++;
+        }
+    }
+}
+
+// Afficher les dépendances
+$hasDependencies = false;
+foreach ($communityDependencies as $comm1 => $deps) {
+    $comm1Label = $communityLabels[$comm1];
+    $hasCommDeps = false;
+    
+    foreach ($deps as $comm2 => $count) {
+        if ($comm1 !== $comm2 && $count > 0) {
+            if (!$hasCommDeps) {
+                echo "Communauté #$comm1Label ($comm1) dépend de :\n";
+                $hasCommDeps = true;
+                $hasDependencies = true;
+            }
+            $comm2Label = $communityLabels[$comm2];
+            echo "  → Communauté #$comm2Label ($comm2) : $count lien(s)\n";
+        }
+    }
+    
+    if ($hasCommDeps) {
+        echo "\n";
+    }
+}
+
+if (!$hasDependencies) {
+    echo "Aucune dépendance entre communautés détectée.\n\n";
+}
+
+// Créer un graphe simplifié des communautés
+$communityGraph = [];
+foreach ($communityDependencies as $comm1 => $deps) {
+    $communityGraph[$comm1] = [];
+    foreach ($deps as $comm2 => $count) {
+        if ($comm1 !== $comm2 && $count > 0) {
+            $communityGraph[$comm1][] = $comm2;
+        }
+    }
+}
+
+echo "═══════════════════════════════════════════════════════════════\n";
+echo "Graphe des communautés (format simplifié) :\n\n";
+foreach ($communityGraph as $comm => $targetCommunities) {
+    if (!empty($targetCommunities)) {
+        $commLabel = $communityLabels[$comm];
+        $targetLabels = array_map(function($c) use ($communityLabels) {
+            return '#' . $communityLabels[$c];
+        }, $targetCommunities);
+        echo "Communauté #$commLabel → " . implode(', ', $targetLabels) . "\n";
+    }
+}
+echo "\n";
+
 // Sauvegarde des résultats en JSON
 $jsonResult = [
     'graph' => $graph,
     'communities' => $communities,
     'communities_by_group' => $result,
+    'community_dependencies' => $communityDependencies,
+    'community_graph' => $communityGraph,
     'total_edges' => $m,
     'total_nodes' => count($graph)
 ];
